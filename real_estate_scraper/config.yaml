@@ -9,12 +9,12 @@ scraping:
 
 search:
   locations:
-    - city: "Paris"
-      zip_code: "75001"
-      radius_km: 10
+    - city: "Beauvoisin"
+      zip_code: "30640"
+      radius_km: 15
   types:
-    - "appartement"
     - "maison"
+    - "terrain"
   price:
     min: 100000
     max: 1000000
