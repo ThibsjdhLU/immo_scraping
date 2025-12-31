@@ -1,8 +1,8 @@
-import requests
-from bs4 import BeautifulSoup
 from typing import List, Dict, Any
+from playwright.sync_api import sync_playwright
 from core.scraper_base import ScraperBase
-from utils.http import get_default_headers
+from utils.http import get_random_user_agent
+import urllib.parse
 
 class LogicImmoScraper(ScraperBase):
     def __init__(self, config, logger):
@@ -11,76 +11,93 @@ class LogicImmoScraper(ScraperBase):
         self.base_url = "https://www.logic-immo.com/recherche-immobiliere.php"
 
     def run(self) -> List[Dict[str, Any]]:
-        # LogicImmo est aussi protégé, mais tentons une approche requests simple
-        # Si ça échoue, c'est "normal" pour des sites immo majeurs sans proxy résidenciel
-
-        self.logger.info(f"Démarrage du scraping {self.site_name} (Requests)...")
+        self.logger.info(f"Démarrage du scraping {self.site_name} (Playwright)...")
         results = []
 
-        # Mapping paramètres
-        # LogicImmo utilise des URLs spécifiques souvent (ex: /vente-immobilier-paris-75001,...)
-        # Pour faire simple, on simule une requête sur une URL construite ou on avertit
-
-        # Pour cet exercice, on va simuler une réponse car LogicImmo requiert des headers complexes et cookies
-        # Mais je vais coder la logique comme si l'accès était ouvert.
-
-        # Construction URL (fictive fonctionnelle)
-        # https://www.logic-immo.com/vente-immobilier-paris-75001,100_1.html
-
+        # Construction URL (simplifiée pour LogicImmo)
+        # Ex: https://www.logic-immo.com/vente-immobilier-paris-75001,100_1.html
         loc = self.config.get('search', {}).get('locations', [])[0]
         zip_code = loc.get('zip_code')
-        city = loc.get('city').lower()
+        city = loc.get('city').lower().replace(' ', '-')
 
         target_url = f"https://www.logic-immo.com/vente-immobilier-{city}-{zip_code},100_1.html"
 
         try:
-            headers = get_default_headers()
-            self.sleep_random(1, 2)
+            with sync_playwright() as p:
+                browser = p.chromium.launch(
+                    headless=self.config.get('scraping', {}).get('headless', True),
+                    args=["--disable-blink-features=AutomationControlled"]
+                )
+                context = browser.new_context(user_agent=get_random_user_agent())
+                context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
-            # Note: LogicImmo bloque souvent requests sans cookies/JS valide (Datadome/Akamai)
-            # En cas de blocage, on retourne vide.
+                page = context.new_page()
+                self.logger.info(f"Navigation vers : {target_url}")
 
-            response = requests.get(target_url, headers=headers, timeout=10)
-
-            if response.status_code != 200:
-                self.logger.warning(f"Statut HTTP {response.status_code} sur LogicImmo")
-                return []
-
-            soup = BeautifulSoup(response.text, 'html.parser')
-
-            # Selecteurs (sujets à changement)
-            annonces = soup.select('.offer-list-item') # Ancienne classe
-            # LogicImmo a migré vers une structure React très similaire à SeLoger (même groupe)
-
-            if not annonces:
-                # Tentative autre selecteur
-                annonces = soup.select('div[class*="PropertyCard"]')
-
-            self.logger.info(f"Annonces trouvées : {len(annonces)}")
-
-            for ann in annonces:
                 try:
-                    link_tag = ann.select_one('a')
-                    url = link_tag['href'] if link_tag else ""
+                    page.goto(target_url, timeout=60000, wait_until="domcontentloaded")
+                except Exception as e:
+                    self.logger.error(f"Erreur de navigation LogicImmo : {e}")
+                    return []
 
-                    price_tag = ann.select_one('[class*="price"]')
-                    price = price_tag.get_text(strip=True) if price_tag else "0"
+                self.sleep_random(3, 5)
 
-                    title = "Annonce LogicImmo"
+                # Check Anti-Bot
+                if "captcha" in page.content().lower() or "datadome" in page.url or "403 Forbidden" in page.title():
+                    self.logger.error("DETECTÉ COMME BOT (Captcha/403) sur LogicImmo.")
+                    browser.close()
+                    return []
 
-                    results.append({
-                        'site': self.site_name,
-                        'title': title,
-                        'price': price,
-                        'location': city,
-                        'url': url,
-                        'description': ann.get_text(strip=True),
-                        'date': "Aujourd'hui"
-                    })
+                # Gestion Cookies
+                try:
+                    page.get_by_text("Accepter", exact=False).first.click(timeout=3000)
                 except:
                     pass
 
+                # Sélecteurs
+                # LogicImmo a une structure changeante, on vise les classes génériques
+                try:
+                    # Attente d'un élément d'annonce
+                    page.wait_for_selector('div[class*="PropertyCard"]', timeout=15000)
+                except:
+                     if "captcha" in page.content().lower():
+                         self.logger.error("DETECTÉ COMME BOT (Captcha) pendant le chargement.")
+                         browser.close()
+                         return []
+                     self.logger.warning("Pas d'annonces trouvées (structure ?)")
+
+                cards = page.query_selector_all('div[class*="PropertyCard"]') # Selecteur générique React
+                if not cards:
+                    cards = page.query_selector_all('.offer-list-item') # Vieux selecteur fallback
+
+                self.logger.info(f"Annonces trouvées sur la page : {len(cards)}")
+
+                for card in cards:
+                    try:
+                        # Extraction
+                        price_elem = card.query_selector('[class*="price"]')
+                        price = price_elem.inner_text() if price_elem else "0"
+
+                        link_elem = card.query_selector('a')
+                        link = link_elem.get_attribute('href') if link_elem else ""
+
+                        # LogicImmo met souvent tout dans le lien
+
+                        results.append({
+                            'site': self.site_name,
+                            'title': "Annonce LogicImmo",
+                            'price': price,
+                            'location': city,
+                            'url': link,
+                            'description': card.inner_text(),
+                            'date': "Aujourd'hui"
+                        })
+                    except:
+                        pass
+
+                browser.close()
+
         except Exception as e:
-            self.log_error("Erreur Requests LogicImmo", e)
+            self.log_error("Erreur critique LogicImmo", e)
 
         return results

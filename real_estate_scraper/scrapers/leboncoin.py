@@ -103,9 +103,19 @@ class LeBonCoinScraper(ScraperBase):
                 # Exemple hypothétique basé sur la structure courante (article ou a[data-test-id='ad'])
 
                 # On attend que des annonces soient chargées
+                if "captcha-delivery" in page.content() or "datadome" in page.content().lower():
+                    self.logger.error("DETECTÉ COMME BOT (DataDome/Captcha). Impossible de scraper LeBonCoin.")
+                    browser.close()
+                    return []
+
                 try:
                     page.wait_for_selector('a[data-test-id="ad"]', timeout=15000)
                 except:
+                    # Double check si on a été bloqué entre temps
+                    if "captcha-delivery" in page.content():
+                         self.logger.error("DETECTÉ COMME BOT (DataDome/Captcha).")
+                         browser.close()
+                         return []
                     self.logger.warning("Aucune annonce trouvée ou structure changée.")
 
                 ads = page.query_selector_all('a[data-test-id="ad"]')
