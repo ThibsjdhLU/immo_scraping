@@ -4,7 +4,7 @@ scraping:
     seloger: true
     logicimmo: true
   frequency_max_minutes: 60
-  headless: true
+  headless: false
   timeout_seconds: 30
 
 search:
