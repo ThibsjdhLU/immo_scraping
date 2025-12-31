@@ -81,6 +81,7 @@ class SeLogerScraper(ScraperBase):
 
                 if "captcha" in page.content().lower() or "datadome" in page.url:
                     self.logger.error("DETECTÉ COMME BOT (Captcha/Datadome). Arrêt.")
+                    self.logger.info("Conseil : Tentez de mettre 'headless: false' dans config.yaml pour intervenir manuellement.")
                     browser.close()
                     return []
 

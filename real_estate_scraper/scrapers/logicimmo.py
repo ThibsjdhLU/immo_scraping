@@ -45,6 +45,7 @@ class LogicImmoScraper(ScraperBase):
                 # Check Anti-Bot
                 if "captcha" in page.content().lower() or "datadome" in page.url or "403 Forbidden" in page.title():
                     self.logger.error("DETECTÉ COMME BOT (Captcha/403) sur LogicImmo.")
+                    self.logger.info("Conseil : Tentez de mettre 'headless: false' dans config.yaml pour intervenir manuellement.")
                     browser.close()
                     return []
 
@@ -62,6 +63,7 @@ class LogicImmoScraper(ScraperBase):
                 except:
                      if "captcha" in page.content().lower():
                          self.logger.error("DETECTÉ COMME BOT (Captcha) pendant le chargement.")
+                         self.logger.info("Conseil : Tentez de mettre 'headless: false' dans config.yaml pour intervenir manuellement.")
                          browser.close()
                          return []
                      self.logger.warning("Pas d'annonces trouvées (structure ?)")

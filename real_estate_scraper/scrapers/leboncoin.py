@@ -105,6 +105,7 @@ class LeBonCoinScraper(ScraperBase):
                 # On attend que des annonces soient chargées
                 if "captcha-delivery" in page.content() or "datadome" in page.content().lower():
                     self.logger.error("DETECTÉ COMME BOT (DataDome/Captcha). Impossible de scraper LeBonCoin.")
+                    self.logger.info("Conseil : Tentez de mettre 'headless: false' dans config.yaml pour intervenir manuellement.")
                     browser.close()
                     return []
 
@@ -114,6 +115,7 @@ class LeBonCoinScraper(ScraperBase):
                     # Double check si on a été bloqué entre temps
                     if "captcha-delivery" in page.content():
                          self.logger.error("DETECTÉ COMME BOT (DataDome/Captcha).")
+                         self.logger.info("Conseil : Tentez de mettre 'headless: false' dans config.yaml pour intervenir manuellement.")
                          browser.close()
                          return []
                     self.logger.warning("Aucune annonce trouvée ou structure changée.")
